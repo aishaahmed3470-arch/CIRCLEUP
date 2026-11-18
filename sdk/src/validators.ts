@@ -327,6 +327,23 @@ export interface RoundState {
 }
 
 /**
+ * One page of the factory registry, from `get_circles_paginated`.
+ *
+ * The registry is append-only and in creation order, so `nextCursor` is a
+ * plain index that never goes stale. `nextCursor === undefined` means the end
+ * of the registry as of this read; resume from `total` to pick up circles
+ * created later.
+ */
+export interface FactoryCirclePage {
+  /** Circle addresses at `[cursor, cursor + circles.length)`, creation order. */
+  circles: string[];
+  /** Cursor for the next page; `undefined` on the final page. */
+  nextCursor: number | undefined;
+  /** Registry length (`get_circle_count`) at the time of the read. */
+  total: number;
+}
+
+/**
  * Aggregate snapshot of a circle's on-chain state.
  *
  * # Invariants
@@ -794,6 +811,51 @@ export function mapRawRoundState(raw: unknown): RoundState {
     ),
     paidOut: decodeBoolean(wire.paid_out, "mapRawRoundState.paid_out"),
   };
+}
+
+/** Upper bound on `get_circles_paginated` page size (factory `MAX_PAGE_SIZE`). */
+const FACTORY_PAGE_SIZE_LIMIT = 50;
+
+/**
+ * Map a raw `CirclePage` returned by `get_circles_paginated` to
+ * {@link FactoryCirclePage}.
+ *
+ * `next_cursor` is an `Option<u32>`; `None` arrives as `null`/`undefined`.
+ * A present cursor must lie past the returned entries and inside `total`,
+ * otherwise following it could skip or repeat circles.
+ *
+ * @throws `TypeError` on a missing field, a wrong type, or a cursor that
+ *   breaks those bounds.
+ */
+export function mapRawCirclePage(raw: unknown, cursor: number): FactoryCirclePage {
+  const wire = decodeRecord(raw, "mapRawCirclePage", ["circles", "total"] as const, "CirclePage");
+  const circles = decodeAddressList(wire.circles, "mapRawCirclePage.circles", {
+    maxLength: FACTORY_PAGE_SIZE_LIMIT,
+  });
+  const total = decodeU32(wire.total, "mapRawCirclePage.total");
+  const rawNext = (wire as Record<string, unknown>).next_cursor;
+  const nextCursor =
+    rawNext === null || rawNext === undefined
+      ? undefined
+      : decodeU32(rawNext, "mapRawCirclePage.next_cursor");
+  const end = cursor + circles.length;
+  if (end > total) {
+    throw new TypeError(
+      `mapRawCirclePage: page ends at ${end} but the registry holds ${total} circles.`,
+    );
+  }
+  if (nextCursor !== undefined && (nextCursor !== end || nextCursor >= total)) {
+    throw new TypeError(
+      `mapRawCirclePage: next_cursor ${nextCursor} is inconsistent with a page ` +
+        `ending at ${end} of ${total}.`,
+    );
+  }
+  if (nextCursor === undefined && end !== total) {
+    throw new TypeError(
+      `mapRawCirclePage: final page ends at ${end} but the registry holds ${total} circles.`,
+    );
+  }
+  return { circles, nextCursor, total };
 }
 
 const CIRCLE_STATUSES: readonly CircleStatus[] = [

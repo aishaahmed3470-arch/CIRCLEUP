@@ -44,12 +44,12 @@ import type {
   ApiRoundsResponse, ApiReputationResponse, ApiMemberContributionsResponse,
   ApiHealthResponse, ApiAuditEventsResponse, GetCirclesParams,
   ApiCircleStatus, CircleSortField, IndexerPagination,
-  GetMemberContributionsParams, PaginateOptions,
+  GetMemberContributionsParams, PaginateOptions, FactoryCirclePage,
 } from './types';
 import {
   validateContractArgs, isValidContractAddress, isValidStellarAddress,
   decodeAddressList, decodeU32, decodeI128, decodeBoolean,
-  mapRawConfig, mapRawRoundState, assertValidCircleStatus, sanitizeTxMetadata,
+  mapRawConfig, mapRawRoundState, mapRawCirclePage, assertValidCircleStatus, sanitizeTxMetadata,
 } from './types';
 import {
   buildSnapshot, computeActionEligibility, detectStateMismatches,
@@ -59,7 +59,7 @@ import type {
   ActualState, CircleAction, ExpectedState, GateBlockReason,
   GateOptions, GateResult, StateSnapshot,
 } from './gating';
-import { INDEXER_MAX_PAGE_SIZE } from './constants';
+import { FACTORY_MAX_PAGE_SIZE, INDEXER_MAX_PAGE_SIZE } from './constants';
 export class FactoryClient extends CircleUpClient {
   private get contractId() {
     return this.config.contracts.circleFactory;
@@ -147,6 +147,68 @@ export class FactoryClient extends CircleUpClient {
       [],
     );
     return decodeU32(raw, "getCircleCount");
+  }
+
+  /**
+   * Read one bounded page of the factory registry (`get_circles_paginated`).
+   *
+   * Prefer this over {@link getCircles}, whose response grows with every
+   * circle ever created. Start at `cursor = 0` and follow `nextCursor` until
+   * it is `undefined`; resume from `total` later to read newer circles.
+   *
+   * @param cursor Zero-based registry index of the first circle to return.
+   * @param limit  Page size, `1..FACTORY_MAX_PAGE_SIZE`.
+   * @throws `RangeError` before any request on an invalid `cursor` / `limit`;
+   *   `Error` when the contract rejects the cursor (`CursorOutOfRange`, 111).
+   */
+  async getCirclesPaginated(
+    cursor = 0,
+    limit = FACTORY_MAX_PAGE_SIZE,
+  ): Promise<FactoryCirclePage> {
+    if (!Number.isInteger(cursor) || cursor < 0 || cursor > 0xffffffff) {
+      throw new RangeError(`getCirclesPaginated: cursor must be a u32, got ${cursor}`);
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > FACTORY_MAX_PAGE_SIZE) {
+      throw new RangeError(
+        `getCirclesPaginated: limit must be an integer in 1..${FACTORY_MAX_PAGE_SIZE}, got ${limit}`,
+      );
+    }
+    const raw = await this.simulateAndReadOrThrow(
+      this.contractId,
+      "get_circles_paginated",
+      [scU32(cursor), scU32(limit)],
+    );
+    return mapRawCirclePage(raw, cursor);
+  }
+
+  /**
+   * Walk the registry from `from` with {@link getCirclesPaginated}, at most
+   * `maxPages` pages (default 20, i.e. 1 000 circles at the default size).
+   *
+   * Returns the circles read and the cursor to resume from: `nextCursor` is
+   * `undefined` when the walk reached the end, otherwise the bound cut it
+   * short. Because the registry is append-only, a later call with
+   * `from = resumeCursor` returns exactly the circles not yet seen.
+   */
+  async getAllCirclesPaged(
+    options: { from?: number; limit?: number; maxPages?: number } = {},
+  ): Promise<{ circles: string[]; nextCursor: number | undefined; resumeCursor: number }> {
+    const limit = options.limit ?? FACTORY_MAX_PAGE_SIZE;
+    const maxPages = options.maxPages ?? 20;
+    if (!Number.isInteger(maxPages) || maxPages < 1) {
+      throw new RangeError(`getAllCirclesPaged: maxPages must be a positive integer, got ${maxPages}`);
+    }
+    const circles: string[] = [];
+    let cursor = options.from ?? 0;
+    for (let i = 0; i < maxPages; i++) {
+      const page = await this.getCirclesPaginated(cursor, limit);
+      circles.push(...page.circles);
+      if (page.nextCursor === undefined) {
+        return { circles, nextCursor: undefined, resumeCursor: page.total };
+      }
+      cursor = page.nextCursor;
+    }
+    return { circles, nextCursor: cursor, resumeCursor: cursor };
   }
 }
 

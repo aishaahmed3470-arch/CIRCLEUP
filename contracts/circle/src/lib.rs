@@ -11,6 +11,12 @@
 //!   6. After all rounds complete → Completed; or while still Pending → `cancel` → Cancelled
 //!   7. `close` releases remaining collateral once Completed or Cancelled
 //!
+//! `pause` / `resume` overlay any status without changing it; `close` sets a
+//! permanent closed overlay.  The full mutation × state matrix, including the
+//! pause and terminal interactions, is specified in [`transition`] and checked
+//! cell by cell in `tests/transition_tests.rs`.  A new status or mutation must
+//! be added there — the matrix will not compile until it is.
+//!
 //! # Protocol constants
 //!
 //! All numeric parameters that affect the on-chain financial model are defined as
@@ -48,6 +54,8 @@
 //! base fee passed to `TransactionBuilder`.  See the README for a worked example.
 
 #![no_std]
+
+pub mod transition; // lifecycle transition matrix (spec for tests/transition_tests.rs)
 
 #[cfg(test)]
 mod tests; // tests are in tests.rs

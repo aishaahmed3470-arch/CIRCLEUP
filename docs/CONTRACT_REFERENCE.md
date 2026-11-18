@@ -121,16 +121,58 @@ writes and `CircleCount` is not incremented.
 
 ---
 
-### `get_circle`
+### `get_circles`
 
 ```
-get_circle(env: Env, index: u32) -> Address
+get_circles(env: Env) -> Vec<Address>
 ```
 
 **Authorization:** read-only; no auth required.
 
-**Returns:** the circle address at zero-based `index` in the factory registry.
-Panics if `index ≥ CircleCount`.
+**Returns:** every circle address in creation order.  Unchanged for existing
+consumers, but the response grows with the registry — new integrations should
+page with `get_circles_paginated`.  Bounding or removing `get_circles` is a
+breaking change and follows [`DEPRECATION_POLICY.md`](DEPRECATION_POLICY.md).
+
+---
+
+### `get_circles_paginated`
+
+```
+get_circles_paginated(env: Env, cursor: u32, limit: u32) -> Result<CirclePage, FactoryError>
+
+struct CirclePage {
+    circles:     Vec<Address>,  // indices [cursor, cursor + circles.len()), creation order
+    next_cursor: Option<u32>,   // None on the final page (as of this read)
+    total:       u32,           // CircleCount at the time of the read
+}
+```
+
+**Authorization:** read-only; no auth required.
+
+**Ordering:** strictly creation order — entry `i` is the circle whose
+`factory/circle_created` event carried `circle_index == i`.  The registry is
+append-only: an entry never moves or changes once written.
+
+**Cursor:** the zero-based registry index of the first entry to return.  Start
+at `0` and follow `next_cursor` until it is `None`.  `None` means "end of the
+registry as of this read"; resume from `total` later to read only circles
+created since.  Because entries never move, a cursor never goes stale and
+every client paging the same factory sees the same sequence.
+
+**Limits:** `limit` is clamped to `MAX_PAGE_SIZE` (50).  `cursor == total`
+returns an empty final page.
+
+**Errors:**
+
+| Code | Name | Condition |
+|------|------|-----------|
+| 110 | `InvalidPageLimit` | `limit == 0` |
+| 111 | `CursorOutOfRange` | `cursor > get_circle_count()` |
+
+Full specification: `contracts/circle_factory/src/registry.rs` and
+[`contracts/circle_factory/README.md`](../contracts/circle_factory/README.md).
+Storage growth limits: [`scalability/FACTORY_REGISTRY_GROWTH.md`](scalability/FACTORY_REGISTRY_GROWTH.md).
 
 ---
 

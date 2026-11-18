@@ -30,6 +30,12 @@ export const BPS_DENOM = 10_000;
 export const INDEXER_DEFAULT_PAGE_SIZE = 20;
 export const INDEXER_MAX_PAGE_SIZE = 100;
 
+/**
+ * Largest page `CircleFactory.get_circles_paginated` returns (mirrors
+ * `circle_factory::MAX_PAGE_SIZE`). Larger limits are clamped on-chain.
+ */
+export const FACTORY_MAX_PAGE_SIZE = 50;
+
 // ─── Network config helpers ───────────────────────────────────────────────────
 
 /** Identifies which Stellar network to target. */

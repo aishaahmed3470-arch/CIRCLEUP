@@ -181,6 +181,53 @@ describe("CircleFactory contract fixtures", () => {
       expect(reencoded).toBe(FIXTURE_VALID);
     });
   });
+
+  /**
+   * Rust signature:
+   *   get_circles_paginated(env, cursor: u32, limit: u32)
+   *       -> Result<CirclePage, FactoryError>
+   *
+   *   struct CirclePage { circles: Vec<Address>, next_cursor: Option<u32>, total: u32 }
+   *
+   * Cursor is a zero-based creation-order index; limit is clamped to 50
+   * on-chain (FACTORY_MAX_PAGE_SIZE).
+   */
+  describe("get_circles_paginated", () => {
+    const FIXTURE_FIRST_PAGE = encodeFixture([scU32(0), scU32(50)]);
+    const FIXTURE_RESUME = encodeFixture([scU32(1_000), scU32(25)]);
+
+    it("first page: cursor 0, max page size", () => {
+      assertFixture(FIXTURE_FIRST_PAGE, [0, 50]);
+    });
+
+    it("resume from a stored total", () => {
+      assertFixture(FIXTURE_RESUME, [1_000, 25]);
+    });
+
+    it("CirclePage return value decodes field by field", () => {
+      const page = xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("circles"),
+          val: scAddressVec([CIRCLE_ADDR]),
+        }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("next_cursor"), val: scU32(1) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("total"), val: scU32(3) }),
+      ]);
+      const native = scValToNative(xdr.ScVal.fromXDR(page.toXDR("base64"), "base64"));
+      expect(native).toEqual({ circles: [CIRCLE_ADDR], next_cursor: 1, total: 3 });
+    });
+
+    it("final page encodes next_cursor None as void", () => {
+      const page = xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("circles"), val: xdr.ScVal.scvVec([]) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("next_cursor"), val: xdr.ScVal.scvVoid() }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("total"), val: scU32(0) }),
+      ]);
+      const native = scValToNative(page) as Record<string, unknown>;
+      expect(native.next_cursor ?? undefined).toBeUndefined();
+      expect(native.total).toBe(0);
+    });
+  });
 });
 
 // ─── Circle contract fixtures ─────────────────────────────────────────────────

@@ -51,8 +51,19 @@
 //! **Stability contract:** topics and the order/types of data tuple fields are
 //! stable.  Adding a new trailing field is backwards-compatible; reordering or
 //! removing fields requires a new event name and an update to `docs/EVENTS.md`.
+//!
+//! # Registry
+//!
+//! The registry is append-only and ordered by creation; `get_circles_paginated`
+//! pages it with an index cursor.  Ordering and cursor semantics are specified
+//! in [`registry`]; storage-growth limits in [`scalability`].
 
 #![no_std]
+
+pub mod registry;
+pub mod scalability;
+
+pub use registry::{CirclePage, MAX_PAGE_SIZE};
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
@@ -101,6 +112,10 @@ pub enum FactoryError {
     DeadlineAboveMaximum = 107,
     AlreadyInitialized = 108,
     InitializeInProgress = 109,
+    /// `get_circles_paginated` was called with `limit == 0`.
+    InvalidPageLimit = 110,
+    /// `get_circles_paginated` was called with `cursor > get_circle_count()`.
+    CursorOutOfRange = 111,
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
@@ -398,24 +413,10 @@ impl CircleFactory {
         );
 
         // ── 7. Commit registry state (only reached on full success) ──────────
-        // Both writes happen together; they are the only factory state mutations
-        // in create_circle. count + 1 always equals circles.len() after this.
-        circles.push_back(circle_address.clone());
-        env.storage().instance().set(&DataKey::Circles, &circles);
-        env.storage().instance().set(&DataKey::CircleCount, &(count + 1));
-
-        // Invariant assertion: count must equal the list length.
-        // This fires only in test/debug builds via the host; in production the
-        // Soroban WASM environment optimises it away if never triggered.
-        let stored_count: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::CircleCount)
-            .unwrap_or(0);
-        let stored_len = circles.len();
-        if stored_count != stored_len {
-            panic!("factory: registry invariant violated: count != circles.len()");
-        }
+        // Append at index `count` and bump the counter together; these are the
+        // only factory state mutations in create_circle.  `registry::push`
+        // rejects a count/length mismatch so the index cursor stays valid.
+        registry::push(&env, &mut circles, count, circle_address.clone());
 
         // ── Event: factory/circle_created ────────────────────────────────────
         //
@@ -443,11 +444,32 @@ impl CircleFactory {
     // ── Queries ───────────────────────────────────────────────────────────────
 
     /// Returns all deployed circle addresses in creation order.
+    ///
+    /// Kept unchanged for existing consumers.  The return value grows with
+    /// the registry, so new integrations should use
+    /// [`Self::get_circles_paginated`]; removing or bounding this getter is a
+    /// breaking change that follows `docs/DEPRECATION_POLICY.md`.
     pub fn get_circles(env: Env) -> Vec<Address> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Circles)
-            .unwrap_or(Vec::new(&env))
+        registry::load(&env)
+    }
+
+    /// Returns at most `limit` circle addresses starting at index `cursor`,
+    /// in creation order.
+    ///
+    /// `limit` is clamped to [`MAX_PAGE_SIZE`].  Start at `cursor = 0` and
+    /// follow `next_cursor` until it is `None`; resume from `total` later to
+    /// read circles created since.  Full semantics: [`registry`].
+    ///
+    /// # Contract errors
+    ///
+    /// - `110` — `limit == 0`.
+    /// - `111` — `cursor > get_circle_count()`.
+    pub fn get_circles_paginated(
+        env: Env,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<CirclePage, FactoryError> {
+        registry::page(&env, cursor, limit)
     }
 
     /// Returns the total number of deployed circles.

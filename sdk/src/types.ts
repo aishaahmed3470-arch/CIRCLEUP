@@ -37,12 +37,13 @@ export {
   isReadSuccess, isReadFailure,
   decodeU32, decodeBigInt, decodeI128, decodeU64, decodeU32InRange,
   decodeRecord, decodeBoolean, decodeAddress, decodeAddressList,
-  mapRawConfig, mapRawRoundState, assertValidCircleStatus,
+  mapRawConfig, mapRawRoundState, mapRawCirclePage, assertValidCircleStatus,
 } from './validators';
 export type {
   CircleStatus,
   CircleConfig,
   RoundState,
+  FactoryCirclePage,
   CircleState,
   MemberState,
   RawCircleConfig,

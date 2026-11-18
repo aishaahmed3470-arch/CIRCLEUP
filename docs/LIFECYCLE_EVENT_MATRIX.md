@@ -15,6 +15,11 @@ SQL parameters against the event payload. The contract side of the new
 `test_initialized_event_carries_rotation_as_trailing_field` in
 `contracts/circle/src/tests.rs`.
 
+Which mutations each lifecycle state accepts or rejects, including the
+pause and closed overlays, is specified separately in
+`contracts/circle/src/transition.rs`. `contracts/circle/tests/transition_tests.rs`
+checks it cell by cell.
+
 ---
 
 ## Matrix

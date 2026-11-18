@@ -26,6 +26,7 @@ If the contract method signature changes, the corresponding fixture test will fa
 | Method         | Parameters                                                           | Fixtures                    |
 |----------------|----------------------------------------------------------------------|-----------------------------|
 | `create_circle`| `creator: Address, members: Vec<Address>, round_amount: i128, round_deadline_ledgers: u32` | Valid, single member, boundary deadline |
+| `get_circles_paginated` | `cursor: u32, limit: u32` → `CirclePage { circles, next_cursor: Option<u32>, total }` | First page, resume cursor, `CirclePage` decode, `None` cursor |
 
 ### Circle Contract
 

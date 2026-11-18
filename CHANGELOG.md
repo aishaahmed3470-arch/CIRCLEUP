@@ -9,6 +9,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Circle lifecycle transition matrix**: `contracts/circle/src/transition.rs`
+  specifies the outcome of every public mutation in the Pending, Active,
+  Completed, Cancelled, Paused and Closed conditions, along with the pause
+  overlay rule. `contracts/circle/tests/transition_tests.rs` runs every cell
+  against the contract. Each rejected call must leave status, round, counters,
+  balances, collateral, reputation and events unchanged. The matrix is an
+  exhaustively matched grid, so adding a status or mutation does not compile
+  until the matrix covers it.
+- **Factory registry paging**: new `get_circles_paginated(cursor, limit)`
+  returns a `CirclePage { circles, next_cursor, total }`. Pages hold at most 50
+  entries (`MAX_PAGE_SIZE`). New errors: `InvalidPageLimit` (110) and
+  `CursorOutOfRange` (111). `get_circles` behaves as before. The SDK adds
+  `FactoryClient.getCirclesPaginated`, `FactoryClient.getAllCirclesPaged`,
+  `mapRawCirclePage`, `FactoryCirclePage` and `FACTORY_MAX_PAGE_SIZE`, plus ABI
+  fixtures.
+- **Registry ordering and cursor specification**: the registry is append-only
+  and ordered by creation, and the cursor is the creation index. Specified in
+  `contracts/circle_factory/src/registry.rs` and
+  `contracts/circle_factory/README.md`, and tested for stable ordering
+  across reads, appends and concurrent clients.
+- **Registry storage-growth model**: design note at
+  `docs/scalability/FACTORY_REGISTRY_GROWTH.md`. Constants in
+  `contracts/circle_factory/src/scalability.rs` keep protocol limits separate
+  from project thresholds: warning at 750 circles, high-water mark at 1,000.
+  Boundary tests measure the serialized registry size against the model.
 - **Issue #715**: Added `docs/CONTRACT_REFERENCE.md` as the canonical reference for
   all public methods, error codes, and authorization rules across the
   `circle_factory`, `circle`, and `reputation` contracts.  The README Contracts

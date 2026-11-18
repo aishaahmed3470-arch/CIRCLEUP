@@ -20,6 +20,7 @@ backward compatibility.
 | Circle `initialize` | 1–14 (`InitError`) | Initialization and deterministic configuration validation |
 | Factory `create_circle` | 100–107 (`FactoryError`) | Member count/uniqueness, amount/overflow, deadline bounds |
 | Factory `initialize` | 108–109 (`FactoryError`) | Already initialized / initialization in progress |
+| Factory `get_circles_paginated` | 110–111 (`FactoryError`) | Zero page limit / cursor past the end of the registry |
 | Circle `join`, `cancel`, `contribute`, `payout`, `mark_default`, `settle_round` | 4–14 (`ContractError`) | Membership, action/state guards, strict deadline, settlement eligibility |
 | Circle `pause`, `resume` | 1–4 (`PauseError`) | Authorization, initialized state, pause state |
 | Circle `close` | 1–4 (`CloseError`) | Terminal state, authorization, settlement completion |
